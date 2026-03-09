@@ -23,7 +23,7 @@ EXPECTED_COLUMNS = [
     "Usuario",
     "Notas",
     "Estado",
-    "Grupo",
+    "Grupos",
     "Activo",
 ]
 
