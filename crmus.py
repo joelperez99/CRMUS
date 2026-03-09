@@ -224,13 +224,22 @@ def prepare_display_table(df):
     existing = [c for c in cols if c in display.columns]
     return display[existing]
 
+def render_editable_table(df, key_name="editor"):
+    editable_df = prepare_display_table(df).copy()
+
+    edited_df = st.data_editor(
+        editable_df,
+        use_container_width=True,
+        hide_index=True,
+        num_rows="fixed",
+        key=key_name
+    )
+
+    return edited_df
+
 def render_main_table(df):
     st.subheader("Contactos")
-    st.dataframe(
-        prepare_display_table(df),
-        use_container_width=True,
-        hide_index=True
-    )
+    render_editable_table(df, key_name="main_table_editor")
 
 def render_card_selector(title, options, key):
     st.markdown(f"### {title}")
@@ -270,12 +279,7 @@ def render_contacts_by_group(df):
         filtered = filter_by_group(df, [selected_group])
 
     st.caption(f"Mostrando {len(filtered)} contacto(s)")
-
-    st.dataframe(
-        prepare_display_table(filtered),
-        use_container_width=True,
-        hide_index=True,
-    )
+    render_editable_table(filtered, key_name="group_table_editor")
 
 def render_contacts_by_active(df):
     st.subheader("Ver contactos por activo")
@@ -297,12 +301,7 @@ def render_contacts_by_active(df):
     filtered = filter_by_active(df, selected_active)
 
     st.caption(f"Mostrando {len(filtered)} contacto(s)")
-
-    st.dataframe(
-        prepare_display_table(filtered),
-        use_container_width=True,
-        hide_index=True,
-    )
+    render_editable_table(filtered, key_name="active_table_editor")
 
 def render_group_summary(df):
     st.subheader("Resumen por grupo")
