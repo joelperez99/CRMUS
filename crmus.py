@@ -46,6 +46,33 @@ RENAME_MAP = {
     "Email": "Email",
 }
 
+DISPLAY_TO_SOURCE_MAP = {
+    "Email": "Email",
+    "DOB": "FechaNacimiento",
+    "Pass 1": "Pass1",
+    "Pass 2": "Pass2",
+    "Nombre": "Nombre",
+    "Apellido": "Apellido",
+    "Telefono": "Telefono",
+    "Usuario": "Usuario",
+    "Grupo": "Grupos",
+    "Activo": "Activo",
+}
+
+SOURCE_TO_DISPLAY_MAP = {
+    "Email": "Email",
+    "FechaNacimiento": "DOB",
+    "Pass1": "Pass 1",
+    "Pass2": "Pass 2",
+    "Nombre": "Nombre",
+    "Apellido": "Apellido",
+    "Telefono": "Telefono",
+    "Usuario": "Usuario",
+    "Grupos": "Grupo",
+    "Activo": "Activo",
+}
+
+
 @st.cache_resource
 def connect_gsheet():
     creds = Credentials.from_service_account_info(
@@ -54,6 +81,16 @@ def connect_gsheet():
     )
     client = gspread.authorize(creds)
     return client
+
+
+def get_worksheet():
+    client = connect_gsheet()
+    spreadsheet_id = st.secrets["sheets"]["spreadsheet_id"]
+    worksheet_name = st.secrets["sheets"]["worksheet_name"]
+    sh = client.open_by_key(spreadsheet_id)
+    ws = sh.worksheet(worksheet_name)
+    return ws
+
 
 def normalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     df = df.rename(columns=RENAME_MAP)
@@ -91,20 +128,14 @@ def normalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
 
     return df
 
+
 @st.cache_data(ttl=60)
 def load_contacts():
-    client = connect_gsheet()
-
-    spreadsheet_id = st.secrets["sheets"]["spreadsheet_id"]
-    worksheet_name = st.secrets["sheets"]["worksheet_name"]
-
-    sh = client.open_by_key(spreadsheet_id)
-    ws = sh.worksheet(worksheet_name)
-
+    ws = get_worksheet()
     records = ws.get_all_records()
     df = pd.DataFrame(records)
-
     return normalize_dataframe(df)
+
 
 def extract_groups(df: pd.DataFrame):
     groups = set()
@@ -115,6 +146,7 @@ def extract_groups(df: pd.DataFrame):
                 groups.add(g)
     return sorted(groups)
 
+
 def normalize_active_value(value: str) -> str:
     v = str(value).strip().lower()
     if v in ["sí", "si", "yes", "true", "1", "activo", "active"]:
@@ -122,6 +154,7 @@ def normalize_active_value(value: str) -> str:
     if v in ["no", "false", "0", "inactivo", "inactive"]:
         return "No"
     return str(value).strip()
+
 
 def extract_active_options(df: pd.DataFrame):
     options = set()
@@ -138,6 +171,7 @@ def extract_active_options(df: pd.DataFrame):
     ordered.extend(sorted([x for x in options if x not in ["Sí", "No"]]))
     return ordered
 
+
 def filter_by_group(df: pd.DataFrame, selected_groups):
     if not selected_groups:
         return df
@@ -148,12 +182,14 @@ def filter_by_group(df: pd.DataFrame, selected_groups):
 
     return df[df["Grupos"].apply(row_has_group)].copy()
 
+
 def filter_by_active(df: pd.DataFrame, selected_active):
     if not selected_active or selected_active == "Todos":
         return df.copy()
 
     normalized = df["Activo"].apply(normalize_active_value)
     return df[normalized == selected_active].copy()
+
 
 def apply_filters(df, search_text, selected_groups, start_date, end_date):
     out = df.copy()
@@ -182,6 +218,7 @@ def apply_filters(df, search_text, selected_groups, start_date, end_date):
 
     return out
 
+
 def metrics_cards(df):
     total = len(df)
     unique_groups = len(extract_groups(df))
@@ -194,25 +231,21 @@ def metrics_cards(df):
     c3.metric("Con teléfono", with_phone)
     c4.metric("Con email", with_email)
 
+
 def prepare_display_table(df):
     display = df.copy()
-    display["FechaNacimiento"] = display["FechaNacimiento"].dt.strftime("%d/%m/%Y")
-    display["FechaNacimiento"] = display["FechaNacimiento"].fillna("")
-    display["Activo"] = display["Activo"].apply(normalize_active_value)
 
-    display = display.rename(columns={
-        "FechaNacimiento": "DOB",
-        "Pass1": "Pass 1",
-        "Pass2": "Pass 2",
-        "Grupos": "Grupo",
-        "Telefono": "Telefono",
-    })
+    display["DOB"] = display["FechaNacimiento"].apply(
+        lambda x: x.strftime("%d/%m/%Y") if pd.notnull(x) else ""
+    )
+    display["Activo"] = display["Activo"].apply(normalize_active_value)
+    display["Grupo"] = display["Grupos"]
 
     cols = [
         "Email",
         "DOB",
-        "Pass 1",
-        "Pass 2",
+        "Pass1",
+        "Pass2",
         "Nombre",
         "Apellido",
         "Telefono",
@@ -221,25 +254,13 @@ def prepare_display_table(df):
         "Activo",
     ]
 
-    existing = [c for c in cols if c in display.columns]
-    return display[existing]
+    display = display[cols].rename(columns={
+        "Pass1": "Pass 1",
+        "Pass2": "Pass 2",
+    })
 
-def render_editable_table(df, key_name="editor"):
-    editable_df = prepare_display_table(df).copy()
+    return display.copy()
 
-    edited_df = st.data_editor(
-        editable_df,
-        use_container_width=True,
-        hide_index=True,
-        num_rows="fixed",
-        key=key_name
-    )
-
-    return edited_df
-
-def render_main_table(df):
-    st.subheader("Contactos")
-    render_editable_table(df, key_name="main_table_editor")
 
 def render_card_selector(title, options, key):
     st.markdown(f"### {title}")
@@ -256,6 +277,131 @@ def render_card_selector(title, options, key):
     )
 
     return selected
+
+
+def parse_display_dob(value):
+    value = str(value).strip()
+    if not value:
+        return ""
+    parsed = pd.to_datetime(value, dayfirst=True, errors="coerce")
+    if pd.isna(parsed):
+        return ""
+    return parsed.strftime("%Y-%m-%d")
+
+
+def get_sheet_header_map():
+    ws = get_worksheet()
+    headers = ws.row_values(1)
+    return {header: idx + 1 for idx, header in enumerate(headers)}
+
+
+def save_edited_rows_to_gsheet(edited_display_df: pd.DataFrame, original_filtered_df: pd.DataFrame):
+    ws = get_worksheet()
+    header_map = get_sheet_header_map()
+
+    if "ID" not in original_filtered_df.columns:
+        st.error("No se encontró la columna ID para guardar cambios.")
+        return False
+
+    edited_df = edited_display_df.copy()
+    original_df = original_filtered_df.copy()
+
+    original_df = original_df.reset_index(drop=True)
+    edited_df = edited_df.reset_index(drop=True)
+
+    # Asegurar misma longitud
+    if len(edited_df) != len(original_df):
+        st.error("La cantidad de filas editadas no coincide con la tabla original filtrada.")
+        return False
+
+    updates = []
+
+    for i in range(len(edited_df)):
+        row_id = str(original_df.loc[i, "ID"]).strip()
+        if not row_id:
+            continue
+
+        sheet_row = i + 2
+        if len(load_contacts()) != 0:
+            # Buscar fila real en la hoja a partir del DataFrame completo
+            full_df = load_contacts().reset_index(drop=True)
+            matches = full_df.index[full_df["ID"].astype(str).str.strip() == row_id].tolist()
+            if not matches:
+                continue
+            sheet_row = matches[0] + 2
+
+        for display_col, source_col in DISPLAY_TO_SOURCE_MAP.items():
+            if display_col not in edited_df.columns:
+                continue
+
+            new_value = edited_df.loc[i, display_col]
+
+            if display_col == "DOB":
+                new_value = parse_display_dob(new_value)
+                old_raw = original_df.loc[i, "FechaNacimiento"]
+                old_value = old_raw.strftime("%Y-%m-%d") if pd.notnull(old_raw) else ""
+            elif display_col == "Grupo":
+                old_value = str(original_df.loc[i, "Grupos"]).strip()
+                new_value = str(new_value).strip()
+            elif display_col == "Activo":
+                old_value = normalize_active_value(original_df.loc[i, "Activo"])
+                new_value = normalize_active_value(new_value)
+            else:
+                old_value = str(original_df.loc[i, source_col]).strip()
+                new_value = str(new_value).strip()
+
+            if str(old_value).strip() != str(new_value).strip():
+                sheet_col = header_map.get(source_col)
+                if sheet_col:
+                    updates.append({
+                        "range": gspread.utils.rowcol_to_a1(sheet_row, sheet_col),
+                        "values": [[new_value]]
+                    })
+
+    if not updates:
+        st.info("No hay cambios para guardar.")
+        return False
+
+    ws.batch_update(updates, value_input_option="USER_ENTERED")
+    st.cache_data.clear()
+    return True
+
+
+def render_editable_table_with_save(df, table_key, save_key, success_key):
+    original_filtered_df = df.copy().reset_index(drop=True)
+    editable_df = prepare_display_table(original_filtered_df).copy()
+
+    edited_df = st.data_editor(
+        editable_df,
+        use_container_width=True,
+        hide_index=True,
+        num_rows="fixed",
+        key=table_key
+    )
+
+    if st.button("Guardar cambios", key=save_key):
+        try:
+            changed = save_edited_rows_to_gsheet(edited_df, original_filtered_df)
+            if changed:
+                st.session_state[success_key] = "Cambios guardados correctamente en Google Sheets."
+                st.rerun()
+        except Exception as e:
+            st.error(f"No se pudieron guardar los cambios: {e}")
+
+    if st.session_state.get(success_key):
+        st.success(st.session_state[success_key])
+        del st.session_state[success_key]
+
+
+def render_main_table(df):
+    st.subheader("Contactos")
+    render_editable_table_with_save(
+        df=df,
+        table_key="main_table_editor",
+        save_key="save_main_table",
+        success_key="save_main_success"
+    )
+
 
 def render_contacts_by_group(df):
     st.subheader("Ver contactos por grupo")
@@ -279,7 +425,14 @@ def render_contacts_by_group(df):
         filtered = filter_by_group(df, [selected_group])
 
     st.caption(f"Mostrando {len(filtered)} contacto(s)")
-    render_editable_table(filtered, key_name="group_table_editor")
+
+    render_editable_table_with_save(
+        df=filtered,
+        table_key="group_table_editor",
+        save_key="save_group_table",
+        success_key="save_group_success"
+    )
+
 
 def render_contacts_by_active(df):
     st.subheader("Ver contactos por activo")
@@ -301,7 +454,14 @@ def render_contacts_by_active(df):
     filtered = filter_by_active(df, selected_active)
 
     st.caption(f"Mostrando {len(filtered)} contacto(s)")
-    render_editable_table(filtered, key_name="active_table_editor")
+
+    render_editable_table_with_save(
+        df=filtered,
+        table_key="active_table_editor",
+        save_key="save_active_table",
+        success_key="save_active_success"
+    )
+
 
 def render_group_summary(df):
     st.subheader("Resumen por grupo")
@@ -322,6 +482,7 @@ def render_group_summary(df):
     summary_df = pd.DataFrame(summary).sort_values("Contactos", ascending=False)
     st.dataframe(summary_df, use_container_width=True, hide_index=True)
 
+
 def show_connection_info():
     with st.expander("Configuración actual", expanded=False):
         st.write("La app usa Google Sheets API con credenciales desde Streamlit secrets.")
@@ -330,6 +491,7 @@ def show_connection_info():
             f"Spreadsheet ID: {st.secrets['sheets']['spreadsheet_id']}\n"
             f"Worksheet name: {st.secrets['sheets']['worksheet_name']}"
         )
+
 
 def main():
     st.markdown("""
@@ -434,6 +596,7 @@ def main():
 
     with tab4:
         render_group_summary(filtered_df)
+
 
 if __name__ == "__main__":
     main()
