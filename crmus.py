@@ -193,9 +193,7 @@ def metrics_cards(df):
     c3.metric("Con teléfono", with_phone)
     c4.metric("Con email", with_email)
 
-def render_main_table(df):
-    st.subheader("Contactos")
-
+def prepare_display_table(df):
     display = df.copy()
     display["FechaNacimiento"] = display["FechaNacimiento"].dt.strftime("%d/%m/%Y")
     display["FechaNacimiento"] = display["FechaNacimiento"].fillna("")
@@ -203,10 +201,10 @@ def render_main_table(df):
 
     display = display.rename(columns={
         "FechaNacimiento": "DOB",
-        "Direccion": "Direccion",
         "Pass1": "Pass 1",
         "Pass2": "Pass 2",
         "Grupos": "Grupo",
+        "Telefono": "Telefono",
     })
 
     cols = [
@@ -214,7 +212,6 @@ def render_main_table(df):
         "DOB",
         "Pass 1",
         "Pass 2",
-        "Direccion",
         "Nombre",
         "Apellido",
         "Telefono",
@@ -224,7 +221,15 @@ def render_main_table(df):
     ]
 
     existing = [c for c in cols if c in display.columns]
-    st.dataframe(display[existing], use_container_width=True, hide_index=True)
+    return display[existing]
+
+def render_main_table(df):
+    st.subheader("Contactos")
+    st.dataframe(
+        prepare_display_table(df),
+        use_container_width=True,
+        hide_index=True
+    )
 
 def render_contacts_by_group(df):
     st.subheader("Ver contactos por grupo")
@@ -266,18 +271,10 @@ def render_contacts_by_group(df):
     else:
         filtered = filter_by_group(df, [selected_group])
 
-    filtered = filtered.copy()
-    filtered["Activo"] = filtered["Activo"].apply(normalize_active_value)
-
     st.caption(f"Mostrando {len(filtered)} contacto(s)")
 
     st.dataframe(
-        filtered[["Nombre", "Apellido", "Email", "Telefono", "Usuario", "Grupos", "Activo"]].rename(
-            columns={
-                "Telefono": "Teléfono",
-                "Grupos": "Grupo"
-            }
-        ),
+        prepare_display_table(filtered),
         use_container_width=True,
         hide_index=True,
     )
@@ -318,18 +315,12 @@ def render_contacts_by_active(df):
 
     st.markdown(f"**Activo seleccionado:** {selected_active}")
 
-    filtered = filter_by_active(df, selected_active).copy()
-    filtered["Activo"] = filtered["Activo"].apply(normalize_active_value)
+    filtered = filter_by_active(df, selected_active)
 
     st.caption(f"Mostrando {len(filtered)} contacto(s)")
 
     st.dataframe(
-        filtered[["Nombre", "Apellido", "Email", "Telefono", "Usuario", "Grupos", "Activo"]].rename(
-            columns={
-                "Telefono": "Teléfono",
-                "Grupos": "Grupo"
-            }
-        ),
+        prepare_display_table(filtered),
         use_container_width=True,
         hide_index=True,
     )
