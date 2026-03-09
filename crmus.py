@@ -87,8 +87,8 @@ def normalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
 def load_contacts():
     client = connect_gsheet()
 
-    spreadsheet_id = st.secrets["sheets"]["spreadsheet_id"]
-    worksheet_name = st.secrets["sheets"]["worksheet_name"]
+    spreadsheet_id = st.secrets["sheets"]["1rTADhrsPe0Wei8XApN7BP5h5JSOp6-H0Bt_fFEbtsVU"]
+    worksheet_name = st.secrets["sheets"]["Sheet1"]
 
     sh = client.open_by_key(spreadsheet_id)
     ws = sh.worksheet(worksheet_name)
