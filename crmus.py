@@ -335,48 +335,62 @@ def show_connection_info():
 def main():
     st.markdown("""
     <style>
-    div[role="radiogroup"] {
-        display: flex;
-        gap: 18px;
-        flex-wrap: wrap;
-        margin-bottom: 8px;
-    }
+        .block-container {
+            padding-top: 0.8rem !important;
+            padding-bottom: 1rem !important;
+        }
 
-    div[role="radiogroup"] > label {
-        background: white;
-        border: 1px solid #d9d9d9;
-        border-radius: 18px;
-        padding: 24px 28px;
-        min-width: 220px;
-        min-height: 92px;
-        display: flex !important;
-        align-items: center;
-        justify-content: center;
-        font-weight: 600;
-        font-size: 18px;
-        cursor: pointer;
-        transition: all 0.2s ease;
-    }
+        [data-testid="stHeader"] {
+            height: 0rem;
+        }
 
-    div[role="radiogroup"] > label:hover {
-        border-color: #999;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.06);
-    }
+        [data-testid="stToolbar"] {
+            top: 0.5rem;
+            right: 0.5rem;
+        }
 
-    div[role="radiogroup"] input[type="radio"] {
-        display: none;
-    }
+        div[role="radiogroup"] {
+            display: flex;
+            gap: 18px;
+            flex-wrap: wrap;
+            margin-bottom: 8px;
+        }
 
-    div[role="radiogroup"] input[type="radio"]:checked + div {
-        color: #111827 !important;
-        font-weight: 700 !important;
-    }
+        div[role="radiogroup"] > label {
+            background: white;
+            border: 1px solid #d9d9d9;
+            border-radius: 18px;
+            padding: 24px 28px;
+            min-width: 220px;
+            min-height: 92px;
+            display: flex !important;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 18px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
 
-    div[role="radiogroup"] > label:has(input[type="radio"]:checked) {
-        background: #e8f0fe;
-        border: 2px solid #4f8dfd;
-        box-shadow: 0 0 0 1px #4f8dfd inset;
-    }
+        div[role="radiogroup"] > label:hover {
+            border-color: #999;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.06);
+        }
+
+        div[role="radiogroup"] input[type="radio"] {
+            display: none;
+        }
+
+        div[role="radiogroup"] input[type="radio"]:checked + div {
+            color: #111827 !important;
+            font-weight: 700 !important;
+        }
+
+        div[role="radiogroup"] > label:has(input[type="radio"]:checked) {
+            background: #e8f0fe;
+            border: 2px solid #4f8dfd;
+            box-shadow: 0 0 0 1px #4f8dfd inset;
+        }
     </style>
     """, unsafe_allow_html=True)
 
