@@ -129,6 +129,7 @@ def extract_active_options(df: pd.DataFrame):
         v = normalize_active_value(value)
         if v:
             options.add(v)
+
     ordered = []
     if "Sí" in options:
         ordered.append("Sí")
@@ -231,6 +232,22 @@ def render_main_table(df):
         hide_index=True
     )
 
+def render_card_selector(title, options, key):
+    st.markdown(f"### {title}")
+
+    if key not in st.session_state:
+        st.session_state[key] = options[0]
+
+    selected = st.radio(
+        label="",
+        options=options,
+        key=key,
+        horizontal=True,
+        label_visibility="collapsed"
+    )
+
+    return selected
+
 def render_contacts_by_group(df):
     st.subheader("Ver contactos por grupo")
     groups = extract_groups(df)
@@ -239,30 +256,11 @@ def render_contacts_by_group(df):
         st.info("No hay grupos disponibles todavía. Agrega una columna 'Grupos' en tu Google Sheet.")
         return
 
-    if "selected_group_button" not in st.session_state:
-        st.session_state.selected_group_button = "Todos"
-
-    st.markdown("### Selecciona un grupo")
-
-    all_groups = ["Todos"] + groups
-    cols_per_row = 4
-
-    for i in range(0, len(all_groups), cols_per_row):
-        row_groups = all_groups[i:i + cols_per_row]
-        cols = st.columns(cols_per_row)
-
-        for j, group_name in enumerate(row_groups):
-            is_selected = st.session_state.selected_group_button == group_name
-            button_label = f"✅ {group_name}" if is_selected else group_name
-
-            if cols[j].button(
-                button_label,
-                key=f"group_btn_{group_name}",
-                use_container_width=True
-            ):
-                st.session_state.selected_group_button = group_name
-
-    selected_group = st.session_state.selected_group_button
+    selected_group = render_card_selector(
+        "Selecciona un grupo",
+        ["Todos"] + groups,
+        "selected_group_button"
+    )
 
     st.markdown(f"**Grupo seleccionado:** {selected_group}")
 
@@ -288,30 +286,11 @@ def render_contacts_by_active(df):
         st.info("No hay valores en la columna 'Activo' todavía.")
         return
 
-    if "selected_active_button" not in st.session_state:
-        st.session_state.selected_active_button = "Todos"
-
-    st.markdown("### Selecciona una opción")
-
-    all_options = ["Todos"] + active_options
-    cols_per_row = 4
-
-    for i in range(0, len(all_options), cols_per_row):
-        row_options = all_options[i:i + cols_per_row]
-        cols = st.columns(cols_per_row)
-
-        for j, option_name in enumerate(row_options):
-            is_selected = st.session_state.selected_active_button == option_name
-            button_label = f"✅ {option_name}" if is_selected else option_name
-
-            if cols[j].button(
-                button_label,
-                key=f"active_btn_{option_name}",
-                use_container_width=True
-            ):
-                st.session_state.selected_active_button = option_name
-
-    selected_active = st.session_state.selected_active_button
+    selected_active = render_card_selector(
+        "Selecciona una opción",
+        ["Todos"] + active_options,
+        "selected_active_button"
+    )
 
     st.markdown(f"**Activo seleccionado:** {selected_active}")
 
@@ -356,12 +335,47 @@ def show_connection_info():
 def main():
     st.markdown("""
     <style>
-    div.stButton > button {
-        height: 70px;
-        border-radius: 14px;
-        border: 1px solid #dcdcdc;
+    div[role="radiogroup"] {
+        display: flex;
+        gap: 18px;
+        flex-wrap: wrap;
+        margin-bottom: 8px;
+    }
+
+    div[role="radiogroup"] > label {
+        background: white;
+        border: 1px solid #d9d9d9;
+        border-radius: 18px;
+        padding: 24px 28px;
+        min-width: 220px;
+        min-height: 92px;
+        display: flex !important;
+        align-items: center;
+        justify-content: center;
         font-weight: 600;
-        font-size: 16px;
+        font-size: 18px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    div[role="radiogroup"] > label:hover {
+        border-color: #999;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.06);
+    }
+
+    div[role="radiogroup"] input[type="radio"] {
+        display: none;
+    }
+
+    div[role="radiogroup"] input[type="radio"]:checked + div {
+        color: #111827 !important;
+        font-weight: 700 !important;
+    }
+
+    div[role="radiogroup"] > label:has(input[type="radio"]:checked) {
+        background: #e8f0fe;
+        border: 2px solid #4f8dfd;
+        box-shadow: 0 0 0 1px #4f8dfd inset;
     }
     </style>
     """, unsafe_allow_html=True)
