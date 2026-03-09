@@ -28,6 +28,7 @@ EXPECTED_COLUMNS = [
 ]
 
 RENAME_MAP = {
+    "ID": "ID",
     "DOB": "FechaNacimiento",
     "Fecha de nacimiento": "FechaNacimiento",
     "FechaNacimiento": "FechaNacimiento",
@@ -56,19 +57,6 @@ DISPLAY_TO_SOURCE_MAP = {
     "Telefono": "Telefono",
     "Usuario": "Usuario",
     "Grupo": "Grupos",
-    "Activo": "Activo",
-}
-
-SOURCE_TO_DISPLAY_MAP = {
-    "Email": "Email",
-    "FechaNacimiento": "DOB",
-    "Pass1": "Pass 1",
-    "Pass2": "Pass 2",
-    "Nombre": "Nombre",
-    "Apellido": "Apellido",
-    "Telefono": "Telefono",
-    "Usuario": "Usuario",
-    "Grupos": "Grupo",
     "Activo": "Activo",
 }
 
@@ -292,7 +280,13 @@ def parse_display_dob(value):
 def get_sheet_header_map():
     ws = get_worksheet()
     headers = ws.row_values(1)
-    return {header: idx + 1 for idx, header in enumerate(headers)}
+
+    normalized_map = {}
+    for idx, header in enumerate(headers, start=1):
+        normalized_header = RENAME_MAP.get(header, header)
+        normalized_map[normalized_header] = idx
+
+    return normalized_map
 
 
 def save_edited_rows_to_gsheet(edited_display_df: pd.DataFrame, original_filtered_df: pd.DataFrame):
@@ -303,16 +297,14 @@ def save_edited_rows_to_gsheet(edited_display_df: pd.DataFrame, original_filtere
         st.error("No se encontró la columna ID para guardar cambios.")
         return False
 
-    edited_df = edited_display_df.copy()
-    original_df = original_filtered_df.copy()
+    edited_df = edited_display_df.copy().reset_index(drop=True)
+    original_df = original_filtered_df.copy().reset_index(drop=True)
 
-    original_df = original_df.reset_index(drop=True)
-    edited_df = edited_df.reset_index(drop=True)
-
-    # Asegurar misma longitud
     if len(edited_df) != len(original_df):
         st.error("La cantidad de filas editadas no coincide con la tabla original filtrada.")
         return False
+
+    full_df = load_contacts().copy().reset_index(drop=True)
 
     updates = []
 
@@ -321,14 +313,11 @@ def save_edited_rows_to_gsheet(edited_display_df: pd.DataFrame, original_filtere
         if not row_id:
             continue
 
-        sheet_row = i + 2
-        if len(load_contacts()) != 0:
-            # Buscar fila real en la hoja a partir del DataFrame completo
-            full_df = load_contacts().reset_index(drop=True)
-            matches = full_df.index[full_df["ID"].astype(str).str.strip() == row_id].tolist()
-            if not matches:
-                continue
-            sheet_row = matches[0] + 2
+        matches = full_df.index[full_df["ID"].astype(str).str.strip() == row_id].tolist()
+        if not matches:
+            continue
+
+        sheet_row = matches[0] + 2
 
         for display_col, source_col in DISPLAY_TO_SOURCE_MAP.items():
             if display_col not in edited_df.columns:
@@ -352,14 +341,18 @@ def save_edited_rows_to_gsheet(edited_display_df: pd.DataFrame, original_filtere
 
             if str(old_value).strip() != str(new_value).strip():
                 sheet_col = header_map.get(source_col)
-                if sheet_col:
-                    updates.append({
-                        "range": gspread.utils.rowcol_to_a1(sheet_row, sheet_col),
-                        "values": [[new_value]]
-                    })
+
+                if sheet_col is None:
+                    st.warning(f"No se encontró la columna '{source_col}' en la hoja.")
+                    continue
+
+                updates.append({
+                    "range": gspread.utils.rowcol_to_a1(sheet_row, sheet_col),
+                    "values": [[new_value]]
+                })
 
     if not updates:
-        st.info("No hay cambios para guardar.")
+        st.info("No hay cambios para guardar o no se encontraron columnas compatibles.")
         return False
 
     ws.batch_update(updates, value_input_option="USER_ENTERED")
@@ -383,7 +376,8 @@ def render_editable_table_with_save(df, table_key, save_key, success_key):
         try:
             changed = save_edited_rows_to_gsheet(edited_df, original_filtered_df)
             if changed:
-                st.session_state[success_key] = "Cambios guardados correctamente en Google Sheets."
+                st.success("Cambios guardados correctamente en Google Sheets.")
+                st.cache_data.clear()
                 st.rerun()
         except Exception as e:
             st.error(f"No se pudieron guardar los cambios: {e}")
