@@ -39,6 +39,8 @@ RENAME_MAP = {
     "FechaNacimiento": "FechaNacimiento",
     "Grupo": "Grupos",
     "Grupos": "Grupos",
+    "Activo": "Activo",
+    "Usuario": "Usuario",
 }
 
 @st.cache_resource
@@ -72,6 +74,7 @@ def normalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
         "Notas",
         "Estado",
         "Grupos",
+        "Activo",
     ]
 
     for col in text_cols:
@@ -130,7 +133,9 @@ def apply_filters(df, search_text, selected_groups, start_date, end_date):
             | out["Direccion"].str.lower().str.contains(s, na=False)
             | out["Pass1"].str.lower().str.contains(s, na=False)
             | out["Pass2"].str.lower().str.contains(s, na=False)
+            | out["Usuario"].str.lower().str.contains(s, na=False)
             | out["Grupos"].str.lower().str.contains(s, na=False)
+            | out["Activo"].str.lower().str.contains(s, na=False)
         )
         out = out[mask]
 
@@ -162,23 +167,28 @@ def render_main_table(df):
     display["FechaNacimiento"] = display["FechaNacimiento"].dt.strftime("%d/%m/%Y")
 
     display = display.rename(columns={
-        "FechaNacimiento": "Fecha de Nacimiento",
-        "Telefono": "Teléfono",
-        "Direccion": "Dirección",
+        "FechaNacimiento": "DOB",
+        "Telefono": "Telefono",
+        "Direccion": "Direccion",
         "Pass1": "Pass 1",
         "Pass2": "Pass 2",
+        "Grupos": "Grupo",
+        "Activo": "Activo",
+        "Usuario": "Usuario",
     })
 
     cols = [
         "Email",
-        "Fecha de Nacimiento",
+        "DOB",
         "Pass 1",
         "Pass 2",
-        "Dirección",
+        "Direccion",
         "Nombre",
         "Apellido",
-        "Teléfono",
-        "Grupos",
+        "Telefono",
+        "Usuario",
+        "Grupo",
+        "Activo",
     ]
 
     existing = [c for c in cols if c in display.columns]
@@ -202,8 +212,11 @@ def render_contacts_by_group(df):
     st.caption(f"Mostrando {len(filtered)} contacto(s)")
 
     st.dataframe(
-        filtered[["Nombre", "Apellido", "Email", "Telefono", "Grupos"]].rename(
-            columns={"Telefono": "Teléfono"}
+        filtered[["Nombre", "Apellido", "Email", "Telefono", "Usuario", "Grupos", "Activo"]].rename(
+            columns={
+                "Telefono": "Teléfono",
+                "Grupos": "Grupo"
+            }
         ),
         use_container_width=True,
         hide_index=True,
@@ -252,7 +265,7 @@ def main():
     st.sidebar.header("Filtros")
     search_text = st.sidebar.text_input(
         "Buscar contacto",
-        placeholder="Nombre, email, teléfono..."
+        placeholder="Nombre, email, teléfono, usuario..."
     )
     selected_groups = st.sidebar.multiselect("Grupos", extract_groups(df))
     start_date = st.sidebar.date_input("Fecha de nacimiento desde", value=None)
