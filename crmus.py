@@ -115,6 +115,28 @@ def extract_groups(df: pd.DataFrame):
                 groups.add(g)
     return sorted(groups)
 
+def normalize_active_value(value: str) -> str:
+    v = str(value).strip().lower()
+    if v in ["sí", "si", "yes", "true", "1", "activo", "active"]:
+        return "Sí"
+    if v in ["no", "false", "0", "inactivo", "inactive"]:
+        return "No"
+    return str(value).strip()
+
+def extract_active_options(df: pd.DataFrame):
+    options = set()
+    for value in df["Activo"].fillna(""):
+        v = normalize_active_value(value)
+        if v:
+            options.add(v)
+    ordered = []
+    if "Sí" in options:
+        ordered.append("Sí")
+    if "No" in options:
+        ordered.append("No")
+    ordered.extend(sorted([x for x in options if x not in ["Sí", "No"]]))
+    return ordered
+
 def filter_by_group(df: pd.DataFrame, selected_groups):
     if not selected_groups:
         return df
@@ -124,6 +146,13 @@ def filter_by_group(df: pd.DataFrame, selected_groups):
         return any(g.lower() in row_groups for g in selected_groups)
 
     return df[df["Grupos"].apply(row_has_group)].copy()
+
+def filter_by_active(df: pd.DataFrame, selected_active):
+    if not selected_active or selected_active == "Todos":
+        return df.copy()
+
+    normalized = df["Activo"].apply(normalize_active_value)
+    return df[normalized == selected_active].copy()
 
 def apply_filters(df, search_text, selected_groups, start_date, end_date):
     out = df.copy()
@@ -170,6 +199,7 @@ def render_main_table(df):
     display = df.copy()
     display["FechaNacimiento"] = display["FechaNacimiento"].dt.strftime("%d/%m/%Y")
     display["FechaNacimiento"] = display["FechaNacimiento"].fillna("")
+    display["Activo"] = display["Activo"].apply(normalize_active_value)
 
     display = display.rename(columns={
         "FechaNacimiento": "DOB",
@@ -235,6 +265,61 @@ def render_contacts_by_group(df):
         filtered = df.copy()
     else:
         filtered = filter_by_group(df, [selected_group])
+
+    filtered = filtered.copy()
+    filtered["Activo"] = filtered["Activo"].apply(normalize_active_value)
+
+    st.caption(f"Mostrando {len(filtered)} contacto(s)")
+
+    st.dataframe(
+        filtered[["Nombre", "Apellido", "Email", "Telefono", "Usuario", "Grupos", "Activo"]].rename(
+            columns={
+                "Telefono": "Teléfono",
+                "Grupos": "Grupo"
+            }
+        ),
+        use_container_width=True,
+        hide_index=True,
+    )
+
+def render_contacts_by_active(df):
+    st.subheader("Ver contactos por activo")
+
+    active_options = extract_active_options(df)
+
+    if not active_options:
+        st.info("No hay valores en la columna 'Activo' todavía.")
+        return
+
+    if "selected_active_button" not in st.session_state:
+        st.session_state.selected_active_button = "Todos"
+
+    st.markdown("### Selecciona una opción")
+
+    all_options = ["Todos"] + active_options
+    cols_per_row = 4
+
+    for i in range(0, len(all_options), cols_per_row):
+        row_options = all_options[i:i + cols_per_row]
+        cols = st.columns(cols_per_row)
+
+        for j, option_name in enumerate(row_options):
+            is_selected = st.session_state.selected_active_button == option_name
+            button_label = f"✅ {option_name}" if is_selected else option_name
+
+            if cols[j].button(
+                button_label,
+                key=f"active_btn_{option_name}",
+                use_container_width=True
+            ):
+                st.session_state.selected_active_button = option_name
+
+    selected_active = st.session_state.selected_active_button
+
+    st.markdown(f"**Activo seleccionado:** {selected_active}")
+
+    filtered = filter_by_active(df, selected_active).copy()
+    filtered["Activo"] = filtered["Activo"].apply(normalize_active_value)
 
     st.caption(f"Mostrando {len(filtered)} contacto(s)")
 
@@ -318,7 +403,7 @@ def main():
 
     metrics_cards(filtered_df)
 
-    tab1, tab2, tab3 = st.tabs(["Vista general", "Por grupos", "Resumen"])
+    tab1, tab2, tab3, tab4 = st.tabs(["Vista general", "Por grupos", "Activos", "Resumen"])
 
     with tab1:
         render_main_table(filtered_df)
@@ -327,6 +412,9 @@ def main():
         render_contacts_by_group(filtered_df)
 
     with tab3:
+        render_contacts_by_active(filtered_df)
+
+    with tab4:
         render_group_summary(filtered_df)
 
 if __name__ == "__main__":
