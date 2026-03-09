@@ -23,7 +23,8 @@ EXPECTED_COLUMNS = [
     "Usuario",
     "Notas",
     "Estado",
-    "Grupos",
+    "Grupo",
+    "Activo",
 ]
 
 RENAME_MAP = {
