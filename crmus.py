@@ -29,18 +29,21 @@ EXPECTED_COLUMNS = [
 
 RENAME_MAP = {
     "DOB": "FechaNacimiento",
+    "Fecha de nacimiento": "FechaNacimiento",
+    "FechaNacimiento": "FechaNacimiento",
     "Dirección": "Direccion",
     "Direccion": "Direccion",
     "Teléfono": "Telefono",
     "Telefono": "Telefono",
     "Pass 1": "Pass1",
     "Pass 2": "Pass2",
-    "Fecha de nacimiento": "FechaNacimiento",
-    "FechaNacimiento": "FechaNacimiento",
     "Grupo": "Grupos",
     "Grupos": "Grupos",
-    "Activo": "Activo",
     "Usuario": "Usuario",
+    "Activo": "Activo",
+    "Nombre": "Nombre",
+    "Apellido": "Apellido",
+    "Email": "Email",
 }
 
 @st.cache_resource
@@ -78,11 +81,12 @@ def normalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     ]
 
     for col in text_cols:
-        df[col] = df[col].fillna("").astype(str)
+        df[col] = df[col].fillna("").astype(str).str.strip()
 
     df["FechaNacimiento"] = pd.to_datetime(df["FechaNacimiento"], errors="coerce")
     df["NombreCompleto"] = (
-        df["Nombre"].str.strip() + " " + df["Apellido"].str.strip()
+        df["Nombre"].fillna("").astype(str).str.strip() + " " +
+        df["Apellido"].fillna("").astype(str).str.strip()
     ).str.strip()
 
     return df
@@ -165,16 +169,14 @@ def render_main_table(df):
 
     display = df.copy()
     display["FechaNacimiento"] = display["FechaNacimiento"].dt.strftime("%d/%m/%Y")
+    display["FechaNacimiento"] = display["FechaNacimiento"].fillna("")
 
     display = display.rename(columns={
         "FechaNacimiento": "DOB",
-        "Telefono": "Telefono",
         "Direccion": "Direccion",
         "Pass1": "Pass 1",
         "Pass2": "Pass 2",
         "Grupos": "Grupo",
-        "Activo": "Activo",
-        "Usuario": "Usuario",
     })
 
     cols = [
@@ -202,7 +204,32 @@ def render_contacts_by_group(df):
         st.info("No hay grupos disponibles todavía. Agrega una columna 'Grupos' en tu Google Sheet.")
         return
 
-    selected_group = st.selectbox("Selecciona un grupo", options=["Todos"] + groups)
+    if "selected_group_button" not in st.session_state:
+        st.session_state.selected_group_button = "Todos"
+
+    st.markdown("### Selecciona un grupo")
+
+    all_groups = ["Todos"] + groups
+    cols_per_row = 4
+
+    for i in range(0, len(all_groups), cols_per_row):
+        row_groups = all_groups[i:i + cols_per_row]
+        cols = st.columns(cols_per_row)
+
+        for j, group_name in enumerate(row_groups):
+            is_selected = st.session_state.selected_group_button == group_name
+            button_label = f"✅ {group_name}" if is_selected else group_name
+
+            if cols[j].button(
+                button_label,
+                key=f"group_btn_{group_name}",
+                use_container_width=True
+            ):
+                st.session_state.selected_group_button = group_name
+
+    selected_group = st.session_state.selected_group_button
+
+    st.markdown(f"**Grupo seleccionado:** {selected_group}")
 
     if selected_group == "Todos":
         filtered = df.copy()
@@ -251,6 +278,18 @@ def show_connection_info():
         )
 
 def main():
+    st.markdown("""
+    <style>
+    div.stButton > button {
+        height: 70px;
+        border-radius: 14px;
+        border: 1px solid #dcdcdc;
+        font-weight: 600;
+        font-size: 16px;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
     st.title("CRM Personalizado")
     st.caption("Conectado a Google Sheets por API")
 
