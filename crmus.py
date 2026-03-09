@@ -67,8 +67,7 @@ def connect_gsheet():
         dict(st.secrets["gcp_service_account"]),
         scopes=SCOPES
     )
-    client = gspread.authorize(creds)
-    return client
+    return gspread.authorize(creds)
 
 
 def get_worksheet():
@@ -76,8 +75,11 @@ def get_worksheet():
     spreadsheet_id = st.secrets["sheets"]["spreadsheet_id"]
     worksheet_name = st.secrets["sheets"]["worksheet_name"]
     sh = client.open_by_key(spreadsheet_id)
-    ws = sh.worksheet(worksheet_name)
-    return ws
+    return sh.worksheet(worksheet_name)
+
+
+def normalize_headers(headers):
+    return [RENAME_MAP.get(h, h) for h in headers]
 
 
 def normalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
@@ -87,7 +89,10 @@ def normalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
         if col not in df.columns:
             df[col] = ""
 
-    df = df[EXPECTED_COLUMNS].copy()
+    if "__sheet_row" not in df.columns:
+        df["__sheet_row"] = ""
+
+    df = df[EXPECTED_COLUMNS + ["__sheet_row"]].copy()
 
     text_cols = [
         "ID",
@@ -120,8 +125,28 @@ def normalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
 @st.cache_data(ttl=60)
 def load_contacts():
     ws = get_worksheet()
-    records = ws.get_all_records()
-    df = pd.DataFrame(records)
+    values = ws.get_all_values()
+
+    if not values:
+        return pd.DataFrame(columns=EXPECTED_COLUMNS + ["__sheet_row", "NombreCompleto"])
+
+    raw_headers = values[0]
+    headers = normalize_headers(raw_headers)
+    rows = values[1:]
+
+    padded_rows = []
+    for idx, row in enumerate(rows, start=2):
+        row = list(row)
+        if len(row) < len(headers):
+            row += [""] * (len(headers) - len(row))
+        elif len(row) > len(headers):
+            row = row[:len(headers)]
+
+        row_dict = dict(zip(headers, row))
+        row_dict["__sheet_row"] = idx
+        padded_rows.append(row_dict)
+
+    df = pd.DataFrame(padded_rows)
     return normalize_dataframe(df)
 
 
@@ -256,15 +281,13 @@ def render_card_selector(title, options, key):
     if key not in st.session_state:
         st.session_state[key] = options[0]
 
-    selected = st.radio(
+    return st.radio(
         label="",
         options=options,
         key=key,
         horizontal=True,
         label_visibility="collapsed"
     )
-
-    return selected
 
 
 def parse_display_dob(value):
@@ -279,45 +302,33 @@ def parse_display_dob(value):
 
 def get_sheet_header_map():
     ws = get_worksheet()
-    headers = ws.row_values(1)
-
-    normalized_map = {}
-    for idx, header in enumerate(headers, start=1):
-        normalized_header = RENAME_MAP.get(header, header)
-        normalized_map[normalized_header] = idx
-
-    return normalized_map
+    raw_headers = ws.row_values(1)
+    normalized_headers = normalize_headers(raw_headers)
+    return {header: idx + 1 for idx, header in enumerate(normalized_headers)}
 
 
 def save_edited_rows_to_gsheet(edited_display_df: pd.DataFrame, original_filtered_df: pd.DataFrame):
     ws = get_worksheet()
     header_map = get_sheet_header_map()
 
-    if "ID" not in original_filtered_df.columns:
-        st.error("No se encontró la columna ID para guardar cambios.")
-        return False
-
     edited_df = edited_display_df.copy().reset_index(drop=True)
     original_df = original_filtered_df.copy().reset_index(drop=True)
+
+    if "__sheet_row" not in original_df.columns:
+        st.error("No se encontró la fila real de Google Sheets (__sheet_row).")
+        return False
 
     if len(edited_df) != len(original_df):
         st.error("La cantidad de filas editadas no coincide con la tabla original filtrada.")
         return False
 
-    full_df = load_contacts().copy().reset_index(drop=True)
-
     updates = []
 
     for i in range(len(edited_df)):
-        row_id = str(original_df.loc[i, "ID"]).strip()
-        if not row_id:
+        try:
+            sheet_row = int(original_df.loc[i, "__sheet_row"])
+        except Exception:
             continue
-
-        matches = full_df.index[full_df["ID"].astype(str).str.strip() == row_id].tolist()
-        if not matches:
-            continue
-
-        sheet_row = matches[0] + 2
 
         for display_col, source_col in DISPLAY_TO_SOURCE_MAP.items():
             if display_col not in edited_df.columns:
@@ -352,7 +363,7 @@ def save_edited_rows_to_gsheet(edited_display_df: pd.DataFrame, original_filtere
                 })
 
     if not updates:
-        st.info("No hay cambios para guardar o no se encontraron columnas compatibles.")
+        st.info("No hay cambios para guardar.")
         return False
 
     ws.batch_update(updates, value_input_option="USER_ENTERED")
@@ -360,7 +371,7 @@ def save_edited_rows_to_gsheet(edited_display_df: pd.DataFrame, original_filtere
     return True
 
 
-def render_editable_table_with_save(df, table_key, save_key, success_key):
+def render_editable_table_with_save(df, table_key, save_key):
     original_filtered_df = df.copy().reset_index(drop=True)
     editable_df = prepare_display_table(original_filtered_df).copy()
 
@@ -377,14 +388,9 @@ def render_editable_table_with_save(df, table_key, save_key, success_key):
             changed = save_edited_rows_to_gsheet(edited_df, original_filtered_df)
             if changed:
                 st.success("Cambios guardados correctamente en Google Sheets.")
-                st.cache_data.clear()
                 st.rerun()
         except Exception as e:
             st.error(f"No se pudieron guardar los cambios: {e}")
-
-    if st.session_state.get(success_key):
-        st.success(st.session_state[success_key])
-        del st.session_state[success_key]
 
 
 def render_main_table(df):
@@ -393,7 +399,6 @@ def render_main_table(df):
         df=df,
         table_key="main_table_editor",
         save_key="save_main_table",
-        success_key="save_main_success"
     )
 
 
@@ -424,7 +429,6 @@ def render_contacts_by_group(df):
         df=filtered,
         table_key="group_table_editor",
         save_key="save_group_table",
-        success_key="save_group_success"
     )
 
 
@@ -453,7 +457,6 @@ def render_contacts_by_active(df):
         df=filtered,
         table_key="active_table_editor",
         save_key="save_active_table",
-        success_key="save_active_success"
     )
 
 
